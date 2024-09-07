@@ -1,11 +1,165 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Real-time Style Transfer Demo</title>
+    <title>Webcam Object Detection Demo</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 </head>
 <body>
-    <h1>Real-time Style Transfer Demo</h1>
-    <img src="{{ url_for('video_feed') }}" width="640" height="480">
+    <h1>Webcam Object Detection Demo</h1>
+    <select id="cameraSelect">
+        <option value="">Select a camera</option>
+    </select>
+    <button id="startButton">Start Capture</button>
+    <br><br>
+    <video id="video" width="640" height="480" autoplay playsinline></video>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+    <img id="output" width="640" height="480">
+    <p>Inference Time: <span id="inferenceTime">N/A</span> seconds</p>
+    <p>FPS: <span id="fps">0</span></p>
+    <p>Status: <span id="status">Initializing...</span></p>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const output = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+        const statusElement = document.getElementById('status');
+        const cameraSelect = document.getElementById('cameraSelect');
+        const startButton = document.getElementById('startButton');
+        let isCapturing = false;
+
+        function checkMediaDevicesSupport() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                const msg = "MediaDevices API is not supported in this browser";
+                console.error(msg);
+                statusElement.textContent = msg;
+                return false;
+            }
+            return true;
+        }
+
+        async function getCameraDevices() {
+            if (!checkMediaDevicesSupport()) return [];
+
+            try {
+                await navigator.mediaDevices.getUserMedia({video: true});
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                return devices.filter(device => device.kind === 'videoinput');
+            } catch (error) {
+                console.error("Error getting camera devices:", error);
+                statusElement.textContent = "Error getting camera devices: " + error.message;
+                return [];
+            }
+        }
+
+        async function populateCameraDropdown() {
+            const cameras = await getCameraDevices();
+            console.log("Available cameras:", cameras);
+            if (cameras.length === 0) {
+                statusElement.textContent = "No cameras found";
+                return;
+            }
+            cameras.forEach((camera, index) => {
+                const option = document.createElement('option');
+                option.value = camera.deviceId;
+                option.text = camera.label || `Camera ${index + 1}`;
+                cameraSelect.add(option);
+            });
+            statusElement.textContent = `Found ${cameras.length} camera(s)`;
+        }
+
+        async function setupCamera() {
+            if (!checkMediaDevicesSupport()) return;
+
+            const selectedCameraId = cameraSelect.value;
+            if (!selectedCameraId) {
+                statusElement.textContent = "Please select a camera";
+                return;
+            }
+
+            try {
+                const constraints = {
+                    video: { deviceId: { exact: selectedCameraId } },
+                    audio: false
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                console.error("Error accessing the camera:", error);
+                statusElement.textContent = "Error accessing the camera: " + error.message;
+            }
+        }
+
+        function startCapturing() {
+            if (isCapturing) return;
+            isCapturing = true;
+            captureFrame();
+        }
+
+        function captureFrame() {
+            if (!isCapturing) return;
+            
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+            fetch('/process_frame', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ frame: imageData }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                output.src = data.processed_frame;
+                document.getElementById('inferenceTime').textContent = data.inference_time.toFixed(4);
+                updateFPS();
+                requestAnimationFrame(captureFrame);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                statusElement.textContent = "Error processing frame: " + error.message;
+                isCapturing = false;
+            });
+        }
+
+        let frameCount = 0;
+        let lastFPSUpdate = Date.now();
+
+        function updateFPS() {
+            frameCount++;
+            const now = Date.now();
+            const elapsed = now - lastFPSUpdate;
+            if (elapsed >= 1000) {
+                const fps = frameCount / (elapsed / 1000);
+                document.getElementById('fps').textContent = fps.toFixed(2);
+                frameCount = 0;
+                lastFPSUpdate = now;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("DOM fully loaded and parsed");
+            console.log("navigator.mediaDevices support:", !!navigator.mediaDevices);
+            console.log("getUserMedia support:", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+            populateCameraDropdown().catch(console.error);
+        });
+
+        startButton.addEventListener('click', () => {
+            setupCamera().then(() => {
+                statusElement.textContent = "Camera ready. Starting processing...";
+                startCapturing();
+            }).catch(error => {
+                console.error("Setup failed:", error);
+                statusElement.textContent = "Setup failed: " + error.message;
+            });
+        });
+    </script>
 </body>
 </html>
-
