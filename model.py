@@ -50,7 +50,7 @@ def process_batch(model, images, confidence_threshold=0.5):
         labels = outputs[i]['labels'].cpu().numpy()
         
         for box, score, label in zip(boxes, scores, labels):
-            if score > confidence_threshold and label == 1:  # 1 is the label for 'person'
+            if score > confidence_threshold and label == 1:  
                 x1, y1, x2, y2 = box.astype(int)
                 draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
                 draw.text((x1, y1), f"Person {score:.2f}", fill="red")

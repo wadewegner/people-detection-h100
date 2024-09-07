@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Use the first GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import torch
 import cv2
 import numpy as np
